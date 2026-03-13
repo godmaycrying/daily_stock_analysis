@@ -59,6 +59,28 @@ def _is_etf_code(stock_code: str) -> bool:
     code = stock_code.strip().split('.')[0]
     return code.startswith(_ETF_ALL_PREFIXES) and len(code) == 6
 
+def _is_hk_code(stock_code: str) -> bool:
+    """
+    判断代码是否为港股
+
+    港股代码规则：
+    - 5位数字代码，如 '00700' (腾讯控股)
+    - 部分港股代码可能带有前缀，如 'hk00700', 'hk1810'
+
+    Args:
+        stock_code: 股票代码
+
+    Returns:
+        True 表示是港股代码，False 表示不是港股代码
+    """
+    # 去除可能的 'hk' 前缀并检查是否为纯数字
+    code = stock_code.lower()
+    if code.startswith('hk'):
+        # 带 hk 前缀的一定是港股，去掉前缀后应为纯数字（1-5位）
+        numeric_part = code[2:]
+        return numeric_part.isdigit() and 1 <= len(numeric_part) <= 5
+    # 无前缀时，5位纯数字才视为港股（避免误判 A 股代码）
+    return code.isdigit() and len(code) == 5
 
 def _is_us_code(stock_code: str) -> bool:
     """
@@ -272,6 +294,12 @@ class TushareFetcher(BaseFetcher):
         if '.' in code:
             return code.upper()
         
+        # 港股：hk前缀 -> .HK后缀
+        if code.startswith('HK'):
+            hk_code = code[2:]
+            logger.debug(f"转换港股代码: {stock_code} -> {hk_code}.HK")
+            return f"{hk_code}.HK"
+        
         # ETF: determine exchange by prefix
         if code.startswith(_ETF_SH_PREFIXES) and len(code) == 6:
             return f"{code}.SH"
@@ -440,6 +468,11 @@ class TushareFetcher(BaseFetcher):
             # ETF uses fund_basic, regular stocks use stock_basic
             if _is_etf_code(stock_code):
                 df = self._api.fund_basic(
+                    ts_code=ts_code,
+                    fields='ts_code,name'
+                )
+            elif _is_hk_code(stock_code):
+                df = self._api.hk_basic(
                     ts_code=ts_code,
                     fields='ts_code,name'
                 )
